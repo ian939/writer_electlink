@@ -4,6 +4,7 @@ import glob
 import json
 import re
 import datetime
+import time
 from google import genai
 from google.genai import types
 
@@ -12,7 +13,7 @@ from google.genai import types
 # ==========================================
 st.set_page_config(page_title="SKelectlink AI 회의록", page_icon="⚡", layout="wide")
 
-# [보안] API 키 처리 (Streamlit Secrets 또는 사이드바 입력)
+# [보안] API 키 처리
 if "GEMINI_API_KEY" in st.secrets:
     api_key = st.secrets["GEMINI_API_KEY"]
 else:
@@ -25,6 +26,13 @@ if not api_key:
 # 클라이언트 초기화
 client = genai.Client(api_key=api_key)
 
+# -----------------------------------------------------------
+# [모델 설정]
+# gemini-2.0-flash는 현재 불안정하므로(429 오류),
+# 안정적인 1.5-flash 모델을 사용합니다.
+# -----------------------------------------------------------
+MODEL_NAME = "gemini-1.5-flash" 
+
 # ==========================================
 # 2. 함수 정의
 # ==========================================
@@ -34,7 +42,6 @@ def load_rag_data():
     rag_text = ""
     file_names = []
     
-    # 1. 로컬(깃허브) rag 폴더 읽기
     base_dir = os.path.dirname(os.path.abspath(__file__))
     rag_dir = os.path.join(base_dir, 'rag')
     
@@ -56,24 +63,26 @@ def analyze_script_metadata(script_text):
     아래 회의 스크립트를 분석하여 JSON 형식으로 정보를 추출하세요.
     
     [추출 항목]
-    1. title: 회의 주제나 제목 (없으면 내용을 요약해서 생성)
+    1. title: 회의 주제나 제목 (내용을 요약해서 1줄로)
     2. date: 회의 날짜 (YYYY-MM-DD), 언급 없으면 오늘 날짜
-    3. attendees: 대화에 참여한 사람들의 실제 이름 리스트 (직급 제외, 이름만)
+    3. attendees: 대화에 참여한 사람들의 실제 이름 리스트 (직급 제외, 이름만 추출)
 
     [SCRIPT]
-    {script_text[:4000]}
+    {script_text[:5000]}
     
     [OUTPUT JSON FORMAT]
     {{"title": "주제", "date": "2024-01-01", "attendees": ["이름1", "이름2"]}}
     """
     try:
-        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+        response = client.models.generate_content(
+            model=MODEL_NAME, 
+            contents=prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json") # JSON 모드 강제
+        )
         text = response.text.strip()
-        # JSON 파싱 (마크다운 제거)
-        if "```json" in text: text = text.split("```json")[1].split("```")[0]
-        elif "```" in text: text = text.split("```")[1].split("```")[0]
         return json.loads(text)
-    except:
+    except Exception as e:
+        st.error(f"분석 오류: {str(e)}")
         return {"title": "", "date": str(datetime.date.today()), "attendees": []}
 
 def detect_speaker_count(script):
@@ -81,7 +90,7 @@ def detect_speaker_count(script):
     patterns = re.findall(r'참석자\s?(\d+)', script)
     if patterns:
         max_num = max(map(int, patterns))
-        return min(max_num, 20) 
+        return min(max_num, 30) 
     return 0
 
 def generate_minutes(info, script, mapping, rag_data=""):
@@ -91,7 +100,8 @@ def generate_minutes(info, script, mapping, rag_data=""):
     
     prompt = f"""
 # [ROLE]
-당신은 SKelectlink의 전문 회의록 작성 비서입니다. 제공된 스크립트와 RAG 지식을 바탕으로 팩트 기반의 회의록을 작성합니다.
+당신은 SKelectlink의 전문 회의록 작성 비서입니다. 
+제공된 스크립트와 RAG 지식을 바탕으로 팩트 기반의 회의록을 작성합니다.
 
 # [REFERENCE (RAG Knowledge)]
 이 섹션의 지식을 우선적으로 참고하여 사내 전문 용어, 프로젝트명, 맥락을 정확히 파악하십시오.
@@ -101,16 +111,11 @@ def generate_minutes(info, script, mapping, rag_data=""):
 1. 작성일: {today}
 2. 회의정보: {info['title']} / {info['date']}
 3. 참석자 명단: {attendees_str}
-4. **화자 매칭 정보 (중요):** {mapping}
+4. **화자 매칭 정보 (필수 적용):** {mapping}
 (스크립트의 '참석자 N'을 위 매칭 정보를 보고 반드시 실명으로 변경하여 작성할 것)
 
 5. [SCRIPT]
 {script}
-
-# [RULES]
-1. 회사명은 'SKelectlink'로 통일하십시오.
-2. **할루시네이션 방지:** 스크립트에 없는 내용은 절대 창조하지 마십시오.
-3. 어조: 전문적이고 간결한 비즈니스 문체 (개조식).
 
 # [OUTPUT FORMAT] (Markdown)
 # 📑 {info['title']}
@@ -124,7 +129,6 @@ def generate_minutes(info, script, mapping, rag_data=""):
 
 ### 2. 주요 발언 및 결정 (Key Message)
 > **💡 주요 결정사항**
-* **[이름]:** [핵심 발언 및 지시 사항]
 * **[이름]:** [핵심 발언 및 지시 사항]
 
 ### 3. 상세 논의 안건
@@ -153,21 +157,20 @@ def generate_minutes(info, script, mapping, rag_data=""):
 - [담당]: [할일]
     """
     try:
-        # gemini-2.0-flash 모델 사용 (속도/성능 균형)
         response = client.models.generate_content(
-            model="gemini-2.0-flash", 
+            model=MODEL_NAME, 
             contents=prompt,
             config=types.GenerateContentConfig(temperature=0.2)
         )
         return response.text
     except Exception as e:
-        return f"Error: {e}"
+        return f"회의록 생성 오류 (Quota 확인 필요): {e}"
 
 # ==========================================
 # 3. Streamlit UI 구성
 # ==========================================
-st.title("⚡ SKelectlink 회의록 생성기 (Web)")
-st.markdown("클로바노트 등의 **스크립트**를 넣으면, **RAG(사내지식)**를 참고하여 **회의록**을 정리는 도구입니다.")
+st.title("⚡ SKelectlink 회의록 생성기")
+st.caption("RAG(사내지식) + Gemini 1.5 Flash 기반")
 
 # 사이드바: RAG 상태 표시
 rag_text, rag_files = load_rag_data()
@@ -188,19 +191,20 @@ if 'num_speakers' not in st.session_state:
 # STEP 1. 스크립트 입력
 # ------------------------------------------
 st.subheader("1. 스크립트 입력")
-script_text = st.text_area("회의 녹취 스크립트를 붙여넣으세요", height=200, placeholder="참석자 1: 안녕하세요...\n참석자 2: 반갑습니다...")
+# [수정] 컨트롤+엔터로 실행되지 않도록 form 사용 안함, 단순 text_area
+script_text = st.text_area(
+    "회의 녹취 스크립트를 붙여넣으세요", 
+    height=200, 
+    placeholder="참석자 1: 안녕하세요...\n참석자 2: 반갑습니다...",
+    key="input_script"
+)
 
-# ------------------------------------------
-# STEP 2. 정보 추출 및 분석
-# ------------------------------------------
-if script_text:
-    st.markdown("---")
-    st.subheader("2. 정보 분석 및 설정")
-    
-    col_btn, col_info = st.columns([1, 3])
-    
-    if col_btn.button("🔍 내용 분석 (AI)", type="primary"):
-        with st.spinner("스크립트 분석 중..."):
+# [수정] 분석 버튼을 명시적으로 눌러야만 진행
+if st.button("🔍 1차 정보 분석 (클릭)", type="primary"):
+    if not script_text.strip():
+        st.warning("스크립트를 먼저 입력해주세요.")
+    else:
+        with st.spinner("AI가 내용을 분석 중입니다..."):
             # 1. 메타데이터 추출
             meta = analyze_script_metadata(script_text)
             st.session_state['meta'] = meta
@@ -208,30 +212,38 @@ if script_text:
             # 2. 화자 수 감지
             detected_count = detect_speaker_count(script_text)
             
-            # 3. 화자 수 보정 (추출된 이름 수 vs 감지된 참석자 수)
-            st.session_state.num_speakers = max(len(meta.get('attendees', [])), detected_count)
+            # 3. 화자 수 보정
+            current_attendees_count = len(meta.get('attendees', []))
+            st.session_state.num_speakers = max(current_attendees_count, detected_count)
             if st.session_state.num_speakers == 0: st.session_state.num_speakers = 2
             
-    # 분석 결과 표시 및 수정
-    if 'meta' in st.session_state:
-        meta = st.session_state['meta']
+            st.success("분석 완료! 아래 정보를 확인해주세요.")
+
+# ------------------------------------------
+# STEP 2. 정보 확인 및 수정
+# ------------------------------------------
+if 'meta' in st.session_state:
+    st.markdown("---")
+    st.subheader("2. 회의 정보 확인")
+    
+    meta = st.session_state['meta']
+    
+    with st.container(border=True):
+        c1, c2 = st.columns([2, 1])
+        input_title = c1.text_input("회의 주제", value=meta.get('title', ''))
+        input_date = c2.text_input("회의 날짜", value=meta.get('date', str(datetime.date.today())))
         
-        with st.container(border=True):
-            c1, c2 = st.columns(2)
-            input_title = c1.text_input("회의 주제", value=meta.get('title', ''))
-            input_date = c2.text_input("회의 날짜", value=meta.get('date', str(datetime.date.today())))
-            
-            # 참석자 태그 관리
-            current_attendees = meta.get('attendees', [])
-            input_attendees_str = st.text_input("참석자 명단 (자동 추출됨, 수정 가능)", value=", ".join(current_attendees))
-            
-            final_attendees = [x.strip() for x in input_attendees_str.split(',') if x.strip()]
-            
-            st.session_state['final_info'] = {
-                "title": input_title,
-                "date": input_date,
-                "attendees": final_attendees
-            }
+        # 참석자 태그 관리
+        current_attendees = meta.get('attendees', [])
+        input_attendees_str = st.text_input("참석자 명단 (자동 추출됨, 수정 가능)", value=", ".join(current_attendees))
+        
+        final_attendees = [x.strip() for x in input_attendees_str.split(',') if x.strip()]
+        
+        st.session_state['final_info'] = {
+            "title": input_title,
+            "date": input_date,
+            "attendees": final_attendees
+        }
 
 # ------------------------------------------
 # STEP 3. 화자 매칭 (핵심 로직)
@@ -244,28 +256,30 @@ if 'final_info' in st.session_state:
     attendee_options = st.session_state['final_info']['attendees'] + ["직접 입력"]
     mapping_list = []
 
-    # 화자 매칭 UI 생성
-    for i in range(st.session_state.num_speakers):
-        cols = st.columns([1, 2, 2])
-        cols[0].markdown(f"**🗣️ 참석자 {i+1}**")
-        
-        # 기본 선택값 로직 (순서대로 매칭 시도)
-        default_idx = i if i < len(attendee_options) - 1 else 0
-        
-        selected_name = cols[1].selectbox(
-            f"대상 선택 ({i})", 
-            attendee_options, 
-            index=default_idx, 
-            label_visibility="collapsed",
-            key=f"speaker_sel_{i}"
-        )
-        
-        real_name = selected_name
-        if selected_name == "직접 입력":
-            real_name = cols[2].text_input(f"이름 입력 ({i})", label_visibility="collapsed", key=f"speaker_txt_{i}")
-        
-        if real_name:
-            mapping_list.append(f"- 참석자 {i+1} → {real_name}")
+    # [수정] 스크롤 가능한 컨테이너 (참석자가 많아도 화면이 길어지지 않음)
+    # height=300 픽셀로 고정하고 내부에서 스크롤됨
+    with st.container(height=300, border=True):
+        for i in range(st.session_state.num_speakers):
+            cols = st.columns([1, 2, 2])
+            cols[0].markdown(f"**🗣️ 참석자 {i+1}**")
+            
+            # 기본 선택값 로직
+            default_idx = i if i < len(attendee_options) - 1 else 0
+            
+            selected_name = cols[1].selectbox(
+                f"대상 선택 ({i})", 
+                attendee_options, 
+                index=default_idx, 
+                label_visibility="collapsed",
+                key=f"speaker_sel_{i}"
+            )
+            
+            real_name = selected_name
+            if selected_name == "직접 입력":
+                real_name = cols[2].text_input(f"이름 입력 ({i})", label_visibility="collapsed", key=f"speaker_txt_{i}")
+            
+            if real_name:
+                mapping_list.append(f"- 참석자 {i+1} → {real_name}")
 
     # 화자 추가 버튼
     if st.button("➕ 화자 추가"):
@@ -280,7 +294,7 @@ if 'final_info' in st.session_state:
         if not script_text:
             st.error("스크립트가 없습니다.")
         else:
-            with st.spinner("RAG 지식 참고하여 회의록 작성 중... (약 10~20초 소요)"):
+            with st.spinner("최종 회의록 작성 중... (약 10~20초 소요)"):
                 mapping_str = "\n".join(mapping_list)
                 result_text = generate_minutes(
                     st.session_state['final_info'], 
@@ -289,7 +303,7 @@ if 'final_info' in st.session_state:
                     rag_text
                 )
                 
-                # 결과 분리 (Slack 메시지)
+                # 결과 분리
                 if "# [SLACK MESSAGE]" in result_text:
                     doc_part, slack_part = result_text.split("# [SLACK MESSAGE]")
                 else:
@@ -309,7 +323,7 @@ if 'result_doc' in st.session_state:
     
     with tab1:
         st.text_area("복사하여 사용하세요", value=st.session_state['result_doc'], height=500)
-        st.markdown(st.session_state['result_doc']) # 미리보기
+        st.markdown(st.session_state['result_doc']) 
         
     with tab2:
         st.text_area("슬랙/메신저용", value=st.session_state['result_slack'], height=300)
