@@ -1,4 +1,5 @@
 streamlit
 google-genai
-streamlit-authenticator
-PyYAML
+streamlit-google-sheets
+pandas
+requests
