@@ -28,10 +28,10 @@ client = genai.Client(api_key=api_key)
 
 # -----------------------------------------------------------
 # [모델 설정]
-# gemini-2.0-flash는 현재 불안정하므로(429 오류),
-# 안정적인 1.5-flash 모델을 사용합니다.
+# 사용자가 검증한 최신 버전 ("latest") 사용
+# 404 Not Found 에러 방지용
 # -----------------------------------------------------------
-MODEL_NAME = "gemini-1.5-flash" 
+MODEL_NAME = "gemini-flash-latest"
 
 # ==========================================
 # 2. 함수 정의
@@ -170,7 +170,7 @@ def generate_minutes(info, script, mapping, rag_data=""):
 # 3. Streamlit UI 구성
 # ==========================================
 st.title("⚡ SKelectlink 회의록 생성기")
-st.caption("RAG(사내지식) + Gemini 1.5 Flash 기반")
+st.caption("RAG(사내지식) + Gemini Latest 기반")
 
 # 사이드바: RAG 상태 표시
 rag_text, rag_files = load_rag_data()
@@ -191,7 +191,7 @@ if 'num_speakers' not in st.session_state:
 # STEP 1. 스크립트 입력
 # ------------------------------------------
 st.subheader("1. 스크립트 입력")
-# [수정] 컨트롤+엔터로 실행되지 않도록 form 사용 안함, 단순 text_area
+# [수정] 컨트롤+엔터로 실행되지 않도록 form 사용 안함
 script_text = st.text_area(
     "회의 녹취 스크립트를 붙여넣으세요", 
     height=200, 
@@ -256,8 +256,7 @@ if 'final_info' in st.session_state:
     attendee_options = st.session_state['final_info']['attendees'] + ["직접 입력"]
     mapping_list = []
 
-    # [수정] 스크롤 가능한 컨테이너 (참석자가 많아도 화면이 길어지지 않음)
-    # height=300 픽셀로 고정하고 내부에서 스크롤됨
+    # [수정] 스크롤 가능한 컨테이너 적용 (참석자 많을 때 화면 보호)
     with st.container(height=300, border=True):
         for i in range(st.session_state.num_speakers):
             cols = st.columns([1, 2, 2])
