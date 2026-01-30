@@ -210,6 +210,12 @@ def generate_minutes(info, script, mapping, rag_data="", custom_prompt=""):
 # 4. 메인 앱 실행
 # ==========================================
 
+# ... (앞부분 import 및 함수 정의는 그대로 유지) ...
+
+# ==========================================
+# 4. 메인 앱 실행 및 UI
+# ==========================================
+
 # 1. 로그인 체크
 if not check_login():
     st.stop()
@@ -218,43 +224,145 @@ if not check_login():
 user_data = st.session_state.user_info
 current_user = user_data['username']
 user_name = user_data['name']
-saved_webhook = str(user_data.get('webhook', '')) if pd.notna(user_data.get('webhook')) else ""
-saved_prompt = str(user_data.get('prompt', '')) if pd.notna(user_data.get('prompt')) else ""
 
-# ==========================================
-# 5. UI 구성
-# ==========================================
+# DB에서 최신 정보 다시 가져오기 (세션 정보 갱신용)
+try:
+    df_fresh = get_users_db()
+    my_row = df_fresh[df_fresh['username'] == current_user].iloc[0]
+    saved_webhook = str(my_row.get('webhook', '')) if pd.notna(my_row.get('webhook')) else ""
+    # 현재 적용된 프롬프트
+    active_prompt = str(my_row.get('prompt', '')) if pd.notna(my_row.get('prompt')) else ""
+    # 슬롯 저장값
+    slot1_val = str(my_row.get('prompt_slot1', '')) if pd.notna(my_row.get('prompt_slot1')) else ""
+    slot2_val = str(my_row.get('prompt_slot2', '')) if pd.notna(my_row.get('prompt_slot2')) else ""
+except:
+    saved_webhook = ""
+    active_prompt = ""
+    slot1_val = ""
+    slot2_val = ""
 
-# [사이드바] 마이페이지
+# ---------------------------------------------------------
+# [사이드바] 마이페이지 (개선됨)
+# ---------------------------------------------------------
 with st.sidebar:
     st.title(f"👤 {user_name}님")
     
-    with st.expander("🔧 개인 설정 (프로필)", expanded=False):
-        with st.form("profile_form"):
-            st.caption("설정을 저장하면 서버(구글시트)에 반영됩니다.")
-            new_webhook = st.text_input("Slack Webhook URL", value=saved_webhook)
-            new_prompt = st.text_area("나만의 프롬프트 (Markdown)", value=saved_prompt, height=150)
-            
-            if st.form_submit_button("💾 설정 저장"):
-                with st.spinner("저장 중..."):
-                    # DB 업데이트 로직
-                    df = get_users_db()
-                    # 해당 유저 행 찾아서 업데이트
-                    idx = df[df['username'] == current_user].index
-                    if not idx.empty:
-                        df.at[idx[0], 'webhook'] = new_webhook
-                        df.at[idx[0], 'prompt'] = new_prompt
-                        update_user_db(df)
-                        
-                        # 세션 정보도 업데이트
-                        st.session_state.user_info['webhook'] = new_webhook
-                        st.session_state.user_info['prompt'] = new_prompt
-                        st.success("저장되었습니다! (새로고침 불필요)")
-                        # 변수 즉시 반영
-                        saved_webhook = new_webhook
-                        saved_prompt = new_prompt
-                    else:
-                        st.error("유저 정보를 찾을 수 없습니다.")
+    # 탭으로 기능 분리 (설정 / 비밀번호)
+    tab_setting, tab_pw = st.tabs(["⚙️ 설정", "🔒 비밀번호"])
+    
+    # ----------------------------------
+    # TAB 1: 개인 설정 (프롬프트 & 웹훅)
+    # ----------------------------------
+    with tab_setting:
+        st.caption("설정을 변경하고 하단의 [적용] 버튼을 누르세요.")
+        
+        # 1. 슬랙 웹훅
+        st.markdown("#### 💬 Slack Webhook")
+        new_webhook = st.text_input("URL 입력", value=saved_webhook, type="password")
+        
+        st.divider()
+        
+        # 2. 프롬프트 관리 (슬롯 기능 추가)
+        st.markdown("#### 📝 프롬프트 관리")
+        
+        # 에디터 상태 관리
+        if 'editor_prompt' not in st.session_state:
+            st.session_state.editor_prompt = active_prompt
+
+        # [버튼 액션] 슬롯 불러오기 / 초기화
+        col_load1, col_load2, col_reset = st.columns(3)
+        with col_load1:
+            if st.button("📂 불러오기 1"):
+                st.session_state.editor_prompt = slot1_val
+                st.rerun()
+        with col_load2:
+            if st.button("📂 불러오기 2"):
+                st.session_state.editor_prompt = slot2_val
+                st.rerun()
+        with col_reset:
+            if st.button("🔄 초기화"):
+                # 기본 제공 프롬프트로 리셋
+                st.session_state.editor_prompt = "" 
+                st.rerun()
+
+        # 프롬프트 에디터
+        new_prompt = st.text_area(
+            "프롬프트 편집기", 
+            value=st.session_state.editor_prompt, 
+            height=200,
+            placeholder="비워두면 시스템 기본 프롬프트가 사용됩니다."
+        )
+        
+        # [버튼 액션] 슬롯에 저장하기
+        col_save1, col_save2 = st.columns(2)
+        with col_save1:
+            if st.button("💾 슬롯 1에 보관"):
+                df = get_users_db()
+                idx = df[df['username'] == current_user].index
+                if not idx.empty:
+                    df.at[idx[0], 'prompt_slot1'] = new_prompt
+                    update_user_db(df)
+                    st.toast("슬롯 1에 저장됨!")
+                    time.sleep(1) # 업데이트 대기
+                    st.rerun()
+        with col_save2:
+            if st.button("💾 슬롯 2에 보관"):
+                df = get_users_db()
+                idx = df[df['username'] == current_user].index
+                if not idx.empty:
+                    df.at[idx[0], 'prompt_slot2'] = new_prompt
+                    update_user_db(df)
+                    st.toast("슬롯 2에 저장됨!")
+                    time.sleep(1)
+                    st.rerun()
+
+        st.markdown("---")
+        # [최종 저장] 현재 설정을 적용 (Active Prompt & Webhook)
+        if st.button("✅ 설정 적용 (Main Save)", type="primary", use_container_width=True):
+            with st.spinner("저장 중..."):
+                df = get_users_db()
+                idx = df[df['username'] == current_user].index
+                if not idx.empty:
+                    df.at[idx[0], 'webhook'] = new_webhook
+                    df.at[idx[0], 'prompt'] = new_prompt # 현재 생성에 쓸 프롬프트
+                    update_user_db(df)
+                    
+                    # 세션 동기화
+                    st.session_state.editor_prompt = new_prompt
+                    st.session_state.user_info['webhook'] = new_webhook
+                    st.session_state.user_info['prompt'] = new_prompt
+                    st.success("설정이 적용되었습니다!")
+    
+    # ----------------------------------
+    # TAB 2: 비밀번호 변경
+    # ----------------------------------
+    with tab_pw:
+        st.markdown("#### 🔐 비밀번호 변경")
+        curr_pw = st.text_input("현재 비밀번호", type="password")
+        new_pw = st.text_input("새 비밀번호", type="password")
+        confirm_pw = st.text_input("새 비밀번호 확인", type="password")
+        
+        if st.button("비밀번호 변경"):
+            if new_pw != confirm_pw:
+                st.error("새 비밀번호가 일치하지 않습니다.")
+            elif not new_pw:
+                st.error("비밀번호를 입력해주세요.")
+            else:
+                df = get_users_db()
+                # 현재 비번 확인 (문자열 변환 필수)
+                user_row = df[(df['username'] == current_user) & (df['password'].astype(str) == curr_pw)]
+                
+                if not user_row.empty:
+                    idx = user_row.index[0]
+                    # 주의: 구글시트가 숫자로 인식하지 않도록 앞에 ' 붙여서 저장하거나 문자열로 처리
+                    df.at[idx, 'password'] = f"'{new_pw}" 
+                    update_user_db(df)
+                    st.success("비밀번호가 변경되었습니다! 다시 로그인해주세요.")
+                    st.session_state.logged_in = False
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    st.error("현재 비밀번호가 틀렸습니다.")
 
     st.divider()
     
@@ -269,6 +377,32 @@ with st.sidebar:
     if st.button("로그아웃"):
         st.session_state.logged_in = False
         st.rerun()
+
+# ---------------------------------------------------------
+# [메인] 앱 로직 (이하 동일)
+# ---------------------------------------------------------
+st.title("⚡ SKelectlink 회의록 생성기")
+
+# ... (이하 STEP 1 ~ STEP 5 코드는 기존 app.py 내용 그대로 유지) ...
+# (주의: STEP 1~5 코드가 사라지지 않도록 잘 연결해주세요)
+# 아래에 기존 코드의 "화자 매칭 상태 관리" 부분부터 끝까지 붙어있어야 합니다.
+
+# 화자 매칭 상태 관리 (예시 - 기존 코드 유지)
+if 'speaker_rows' not in st.session_state:
+    st.session_state.speaker_rows = [{'id': 0, 'manual_default': False}, {'id': 1, 'manual_default': False}]
+    st.session_state.next_id = 2
+
+def add_speaker_row():
+    st.session_state.speaker_rows.append({'id': st.session_state.next_id, 'manual_default': True})
+    st.session_state.next_id += 1
+
+def remove_speaker_row(row_id):
+    st.session_state.speaker_rows = [r for r in st.session_state.speaker_rows if r['id'] != row_id]
+
+# ... (STEP 1 ~ STEP 5 기존 코드 계속) ...
+# STEP 1: 스크립트 입력
+st.subheader("1. 스크립트 입력")
+# ...
 
 # [메인]
 st.title("⚡ SKelectlink 회의록 생성기")
