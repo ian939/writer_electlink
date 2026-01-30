@@ -4,7 +4,6 @@ import glob
 import json
 import re
 import datetime
-import time
 from google import genai
 from google.genai import types
 
@@ -23,14 +22,9 @@ if not api_key:
     st.warning("👈 사이드바에 Gemini API 키를 입력하거나 Secrets를 설정해주세요.")
     st.stop()
 
-# 클라이언트 초기화
 client = genai.Client(api_key=api_key)
 
-# -----------------------------------------------------------
-# [모델 설정]
-# 사용자가 검증한 최신 버전 ("latest") 사용
-# 404 Not Found 에러 방지용
-# -----------------------------------------------------------
+# 모델명 설정
 MODEL_NAME = "gemini-flash-latest"
 
 # ==========================================
@@ -63,26 +57,28 @@ def analyze_script_metadata(script_text):
     아래 회의 스크립트를 분석하여 JSON 형식으로 정보를 추출하세요.
     
     [추출 항목]
-    1. title: 회의 주제나 제목 (내용을 요약해서 1줄로)
-    2. date: 회의 날짜 (YYYY-MM-DD), 언급 없으면 오늘 날짜
-    3. attendees: 대화에 참여한 사람들의 실제 이름 리스트 (직급 제외, 이름만 추출)
+    1. title: 회의 주제 (요약)
+    2. date: 회의 날짜 (YYYY-MM-DD)
+    3. attendees: 대화 참여자 명단 (List[String])
+       - 실명이 있다면 실명 추출 (예: '홍길동', '김철수')
+       - 실명이 없고 '참석자 1', '참석자 2' 형태라면 그대로 추출할 것
+       - 직급은 제외하고 이름/호칭만 추출
 
     [SCRIPT]
     {script_text[:5000]}
     
     [OUTPUT JSON FORMAT]
-    {{"title": "주제", "date": "2024-01-01", "attendees": ["이름1", "이름2"]}}
+    {{"title": "주제", "date": "2024-01-01", "attendees": ["이름1", "참석자 2"]}}
     """
     try:
         response = client.models.generate_content(
             model=MODEL_NAME, 
             contents=prompt,
-            config=types.GenerateContentConfig(response_mime_type="application/json") # JSON 모드 강제
+            config=types.GenerateContentConfig(response_mime_type="application/json")
         )
         text = response.text.strip()
         return json.loads(text)
     except Exception as e:
-        st.error(f"분석 오류: {str(e)}")
         return {"title": "", "date": str(datetime.date.today()), "attendees": []}
 
 def detect_speaker_count(script):
@@ -98,6 +94,7 @@ def generate_minutes(info, script, mapping, rag_data=""):
     today = datetime.date.today().strftime("%Y-%m-%d")
     attendees_str = ", ".join(info['attendees'])
     
+    # [수정 Point 1] Action Item 팀명 추측 금지 프롬프트 추가
     prompt = f"""
 # [ROLE]
 당신은 SKelectlink의 전문 회의록 작성 비서입니다. 
@@ -116,6 +113,10 @@ def generate_minutes(info, script, mapping, rag_data=""):
 
 5. [SCRIPT]
 {script}
+
+# [RULES - 중요]
+1. **소속 팀 추측 금지:** Action Item 담당자 이름 뒤에 '/개발팀', '/기획팀' 같은 소속 정보를 임의로 붙이지 마십시오. 정확한 정보가 없으면 **이름만** 적으십시오. (예: '홍길동/팀명 미상'(X) -> '홍길동'(O))
+2. 할루시네이션 방지: 스크립트에 없는 내용은 절대 창조하지 마십시오.
 
 # [OUTPUT FORMAT] (Markdown)
 # 📑 {info['title']}
@@ -164,13 +165,13 @@ def generate_minutes(info, script, mapping, rag_data=""):
         )
         return response.text
     except Exception as e:
-        return f"회의록 생성 오류 (Quota 확인 필요): {e}"
+        return f"회의록 생성 오류: {e}"
 
 # ==========================================
 # 3. Streamlit UI 구성
 # ==========================================
 st.title("⚡ SKelectlink 회의록 생성기")
-st.caption("RAG(사내지식) + Gemini Latest 기반")
+st.caption(f"Model: {MODEL_NAME} | RAG Enabled")
 
 # 사이드바: RAG 상태 표시
 rag_text, rag_files = load_rag_data()
@@ -191,7 +192,6 @@ if 'num_speakers' not in st.session_state:
 # STEP 1. 스크립트 입력
 # ------------------------------------------
 st.subheader("1. 스크립트 입력")
-# [수정] 컨트롤+엔터로 실행되지 않도록 form 사용 안함
 script_text = st.text_area(
     "회의 녹취 스크립트를 붙여넣으세요", 
     height=200, 
@@ -199,7 +199,7 @@ script_text = st.text_area(
     key="input_script"
 )
 
-# [수정] 분석 버튼을 명시적으로 눌러야만 진행
+# 분석 버튼
 if st.button("🔍 1차 정보 분석 (클릭)", type="primary"):
     if not script_text.strip():
         st.warning("스크립트를 먼저 입력해주세요.")
@@ -209,13 +209,15 @@ if st.button("🔍 1차 정보 분석 (클릭)", type="primary"):
             meta = analyze_script_metadata(script_text)
             st.session_state['meta'] = meta
             
-            # 2. 화자 수 감지
-            detected_count = detect_speaker_count(script_text)
+            # 2. 화자 수 보정
+            extracted_attendees = meta.get('attendees', [])
+            count_from_ai = len(extracted_attendees)
             
-            # 3. 화자 수 보정
-            current_attendees_count = len(meta.get('attendees', []))
-            st.session_state.num_speakers = max(current_attendees_count, detected_count)
-            if st.session_state.num_speakers == 0: st.session_state.num_speakers = 2
+            if count_from_ai == 0:
+                detected_count = detect_speaker_count(script_text)
+                st.session_state.num_speakers = max(detected_count, 2)
+            else:
+                st.session_state.num_speakers = count_from_ai
             
             st.success("분석 완료! 아래 정보를 확인해주세요.")
 
@@ -233,8 +235,11 @@ if 'meta' in st.session_state:
         input_title = c1.text_input("회의 주제", value=meta.get('title', ''))
         input_date = c2.text_input("회의 날짜", value=meta.get('date', str(datetime.date.today())))
         
-        # 참석자 태그 관리
+        # 참석자 명단 (AI가 찾은 내용 표시)
         current_attendees = meta.get('attendees', [])
+        if not current_attendees:
+            current_attendees = [f"참석자 {i+1}" for i in range(st.session_state.num_speakers)]
+
         input_attendees_str = st.text_input("참석자 명단 (자동 추출됨, 수정 가능)", value=", ".join(current_attendees))
         
         final_attendees = [x.strip() for x in input_attendees_str.split(',') if x.strip()]
@@ -256,7 +261,7 @@ if 'final_info' in st.session_state:
     attendee_options = st.session_state['final_info']['attendees'] + ["직접 입력"]
     mapping_list = []
 
-    # [수정] 스크롤 가능한 컨테이너 적용 (참석자 많을 때 화면 보호)
+    # 스크롤 가능한 컨테이너
     with st.container(height=300, border=True):
         for i in range(st.session_state.num_speakers):
             cols = st.columns([1, 2, 2])
@@ -269,7 +274,7 @@ if 'final_info' in st.session_state:
                 f"대상 선택 ({i})", 
                 attendee_options, 
                 index=default_idx, 
-                label_visibility="collapsed",
+                label_visibility="collapsed", 
                 key=f"speaker_sel_{i}"
             )
             
@@ -280,10 +285,19 @@ if 'final_info' in st.session_state:
             if real_name:
                 mapping_list.append(f"- 참석자 {i+1} → {real_name}")
 
-    # 화자 추가 버튼
-    if st.button("➕ 화자 추가"):
-        st.session_state.num_speakers += 1
-        st.rerun()
+    # [수정 Point 2] 화자 추가 및 삭제 기능
+    col_add, col_del = st.columns(2)
+    with col_add:
+        if st.button("➕ 화자 추가", use_container_width=True):
+            st.session_state.num_speakers += 1
+            st.rerun()
+    with col_del:
+        if st.button("➖ 화자 삭제 (맨 아래 칸)", use_container_width=True):
+            if st.session_state.num_speakers > 1:
+                st.session_state.num_speakers -= 1
+                st.rerun()
+            else:
+                st.toast("최소 1명은 있어야 합니다.")
 
     # ------------------------------------------
     # STEP 4. 회의록 생성
@@ -293,7 +307,7 @@ if 'final_info' in st.session_state:
         if not script_text:
             st.error("스크립트가 없습니다.")
         else:
-            with st.spinner("최종 회의록 작성 중... (약 10~20초 소요)"):
+            with st.spinner("최종 회의록 작성 중..."):
                 mapping_str = "\n".join(mapping_list)
                 result_text = generate_minutes(
                     st.session_state['final_info'], 
@@ -302,7 +316,6 @@ if 'final_info' in st.session_state:
                     rag_text
                 )
                 
-                # 결과 분리
                 if "# [SLACK MESSAGE]" in result_text:
                     doc_part, slack_part = result_text.split("# [SLACK MESSAGE]")
                 else:
