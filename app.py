@@ -19,95 +19,43 @@ st.set_page_config(page_title="SKelectlink AI 회의록", page_icon="⚡", layou
 # 사람인 스타일 CSS 적용
 saramin_style = """
 <style>
-    /* 1. 전체 배경색 변경 (연한 회색) */
-    .stApp {
-        background-color: #F4F6F9;
-    }
-    
-    /* 2. 컨테이너를 카드 형태로 변경 (흰색 배경 + 그림자 + 둥근 모서리) */
-    [data-testid="stVerticalBlock"] > [style*="flex-direction: column;"] > [data-testid="stVerticalBlock"] {
-        /* 이 부분은 Streamlit 내부 구조에 따라 다를 수 있어 st.container(border=True)를 적극 활용합니다 */
-    }
-
-    /* st.container(border=True) 스타일 오버라이딩 -> 카드 디자인 */
+    .stApp { background-color: #F4F6F9; }
     div[data-testid="stVerticalBlockBorderWrapper"] > div {
         border: none !important;
         background-color: #FFFFFF;
         border-radius: 16px;
         padding: 24px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); /* 부드러운 그림자 */
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
     }
-
-    /* 3. 버튼 스타일 (사람인 블루) */
     div.stButton > button {
-        background-color: #F0F4FF; /* 연한 블루 배경 */
-        color: #3477FF; /* 메인 블루 텍스트 */
-        border: 1px solid #3477FF;
-        border-radius: 8px;
-        font-weight: 700;
-        transition: all 0.2s;
-        height: 44px;
+        background-color: #F0F4FF; color: #3477FF; border: 1px solid #3477FF;
+        border-radius: 8px; font-weight: 700; transition: all 0.2s; height: 44px;
     }
     div.stButton > button:hover {
-        background-color: #3477FF;
-        color: white;
-        border: 1px solid #3477FF;
+        background-color: #3477FF; color: white; border: 1px solid #3477FF;
     }
-    /* Primary 버튼 (강조) */
     div.stButton > button[kind="primary"] {
-        background-color: #3477FF;
-        color: white;
-        border: none;
+        background-color: #3477FF; color: white; border: none;
         box-shadow: 0 4px 12px rgba(52, 119, 255, 0.3);
     }
     div.stButton > button[kind="primary"]:hover {
-        background-color: #2660D9;
-        box-shadow: 0 2px 8px rgba(52, 119, 255, 0.2);
+        background-color: #2660D9; box-shadow: 0 2px 8px rgba(52, 119, 255, 0.2);
     }
-
-    /* 4. 입력창 스타일 */
     .stTextArea textarea, .stTextInput input {
-        border-radius: 8px;
-        border: 1px solid #E0E0E0;
-        background-color: #FCFCFC;
+        border-radius: 8px; border: 1px solid #E0E0E0; background-color: #FCFCFC;
     }
     .stTextArea textarea:focus, .stTextInput input:focus {
-        border-color: #3477FF;
-        box-shadow: 0 0 0 2px rgba(52, 119, 255, 0.1);
+        border-color: #3477FF; box-shadow: 0 0 0 2px rgba(52, 119, 255, 0.1);
     }
-
-    /* 5. 텍스트 스타일 */
-    h1, h2, h3 {
-        font-family: 'Pretendard', sans-serif;
-        color: #171717;
-        font-weight: 700;
-    }
-    p, label {
-        color: #444444;
-    }
-    
-    /* 6. 사이드바 스타일 */
-    section[data-testid="stSidebar"] {
-        background-color: #FFFFFF;
-        border-right: 1px solid #EAEAEA;
-    }
-    
-    /* 7. 탭 스타일 */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 20px;
-    }
+    h1, h2, h3 { font-family: 'Pretendard', sans-serif; color: #171717; font-weight: 700; }
+    p, label { color: #444444; }
+    section[data-testid="stSidebar"] { background-color: #FFFFFF; border-right: 1px solid #EAEAEA; }
+    .stTabs [data-baseweb="tab-list"] { gap: 20px; }
     .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        white-space: pre-wrap;
-        background-color: transparent;
-        border-radius: 4px;
-        color: #888888;
-        font-weight: 600;
+        height: 50px; white-space: pre-wrap; background-color: transparent;
+        border-radius: 4px; color: #888888; font-weight: 600;
     }
-    .stTabs [aria-selected="true"] {
-        color: #3477FF;
-        border-bottom-color: #3477FF;
-    }
+    .stTabs [aria-selected="true"] { color: #3477FF; border-bottom-color: #3477FF; }
 </style>
 """
 st.markdown(saramin_style, unsafe_allow_html=True)
@@ -125,12 +73,14 @@ MODEL_NAME = "gemini-flash-latest"
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # ==========================================
-# 2. Helper 함수 (로직은 그대로 유지)
+# 2. Helper 함수
 # ==========================================
 def get_users_db():
-    return conn.read(worksheet="Sheet1", ttl=0)  # 영어로 변경
+    # [주의] 본인의 구글 시트 탭 이름이 'Sheet1'인지 '시트1'인지 확인 후 수정하세요!
+    return conn.read(worksheet="Sheet1", ttl=0)
 
 def update_user_db(df):
+    # [주의] 위와 동일하게 수정하세요!
     conn.update(worksheet="Sheet1", data=df)
     st.cache_data.clear()
 
@@ -142,11 +92,10 @@ def check_login():
     if st.session_state.logged_in:
         return True
 
-    # 로그인 화면 디자인 (중앙 카드형)
+    # 로그인 화면 디자인
     c1, c2, c3 = st.columns([1, 1.5, 1])
     with c2:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        # 카드 느낌을 주기 위해 container(border=True) 사용
         with st.container(border=True):
             st.markdown("<h2 style='text-align: center; color: #3477FF;'>SKelectlink</h2>", unsafe_allow_html=True)
             st.markdown("<p style='text-align: center; color: #666; font-size: 14px;'>스마트한 회의록 작성을 위한 AI 비서</p>", unsafe_allow_html=True)
@@ -172,7 +121,8 @@ def check_login():
                         else:
                             st.error("아이디 또는 비밀번호가 일치하지 않습니다.")
                     except Exception as e:
-                        st.error("시스템 접속 오류. 관리자에게 문의하세요.")
+                        # 에러 내용을 확인하려면 아래 주석을 해제하세요.
+                        st.error(f"시스템 접속 오류: {e}")
     return False
 
 def load_rag_data(personal_files=None):
@@ -353,20 +303,26 @@ with st.sidebar:
 
     with tab_pw:
         curr_pw = st.text_input("현재 PW", type="password")
-        new_pw = st.text_input("새 PW", type="password")
+        new_pw = st.text_input("새 PW (영문자로 시작)", type="password", placeholder="숫자로 시작 불가")
         confirm_pw = st.text_input("확인", type="password")
-        if st.button("변경"):
-            if new_pw != confirm_pw: st.error("불일치")
-            elif not new_pw: st.error("입력필요")
+        
+        if st.button("변경하기"):
+            if new_pw != confirm_pw:
+                st.error("새 비밀번호가 일치하지 않습니다.")
+            elif not new_pw:
+                st.error("비밀번호를 입력해주세요.")
+            elif new_pw[0].isdigit(): # [수정] 숫자로 시작하는지 확인
+                st.error("⚠️ 비밀번호는 숫자로 시작할 수 없습니다. (영문자로 시작해주세요)")
             else:
                 df = get_users_db()
                 user_row = df[(df['username'] == current_user) & (df['password'].astype(str) == curr_pw)]
                 if not user_row.empty:
                     idx = user_row.index[0]
-                    df.at[idx, 'password'] = f"'{new_pw}" 
+                    # [수정] ' 제거 및 바로 저장
+                    df.at[idx, 'password'] = new_pw 
                     update_user_db(df)
                     st.success("변경완료. 재로그인 필요."); st.session_state.logged_in = False; time.sleep(1); st.rerun()
-                else: st.error("현재 비밀번호 틀림")
+                else: st.error("현재 비밀번호가 틀렸습니다.")
 
     st.markdown("---")
     st.markdown("**📂 참고 자료 (휘발성)**")
@@ -440,7 +396,6 @@ if 'meta' in st.session_state:
                 with st.container(height=260):
                     for i, row in enumerate(st.session_state.speaker_rows):
                         rid = row['id']
-                        # 컬럼 비율 조정으로 깔끔하게 정렬
                         c_label, c_sel, c_inp, c_del = st.columns([0.8, 1.3, 1.3, 0.4])
                         
                         c_label.markdown(f"<div style='padding-top:10px; font-weight:600; font-size:14px;'>참석자 {i+1}</div>", unsafe_allow_html=True)
@@ -454,7 +409,7 @@ if 'meta' in st.session_state:
                         
                         if real: mapping_list.append(f"- 참석자 {i+1} → {real}")
                         
-                        if c_del.button("✕", key=f"d_{rid}"): # X 버튼 대신 깔끔한 기호 사용
+                        if c_del.button("✕", key=f"d_{rid}"):
                             remove_speaker_row(rid)
                             st.rerun()
                 
