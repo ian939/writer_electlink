@@ -171,7 +171,7 @@ def generate_minutes(info, script, mapping, rag_data=""):
 # 3. Streamlit UI 구성
 # ==========================================
 st.title("⚡ SKelectlink 회의록 생성기")
-st.caption(f"Model: {MODEL_NAME} | RAG Enabled")
+st.caption(f"Model: {MODEL_NAME} | RAG Enabled, 슬자생 멤버들을 위한 MVP버전 (로그인+DB를 통한 rag추가 및 슬랙 웹훅 설정 추가 예정")
 
 # 사이드바: RAG 상태 표시
 rag_text, rag_files = load_rag_data()
