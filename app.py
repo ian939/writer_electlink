@@ -12,53 +12,127 @@ from google.genai import types
 from streamlit_gsheets import GSheetsConnection
 
 # ==========================================
-# 1. 디자인 및 설정 (Custom CSS)
+# 1. 디자인 및 설정 (Modern CSS Style)
 # ==========================================
 st.set_page_config(page_title="SKelectlink AI 회의록", page_icon="⚡", layout="wide")
 
-# 사람인 스타일 CSS 적용
-saramin_style = """
+# v0 느낌의 모던 스타일 CSS
+modern_style = """
 <style>
-    .stApp { background-color: #F4F6F9; }
-    div[data-testid="stVerticalBlockBorderWrapper"] > div {
-        border: none !important;
-        background-color: #FFFFFF;
-        border-radius: 16px;
-        padding: 24px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+    
+    html, body, [class*="css"] {
+        font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif !important;
     }
+
+    /* 전체 배경 */
+    .stApp {
+        background-color: #F8FAFC; 
+    }
+
+    /* 메인 타이틀 영역 스타일 */
+    .main-header {
+        background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+        padding: 40px 20px;
+        border-radius: 16px;
+        color: white;
+        margin-bottom: 30px;
+        text-align: center;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    .main-header h1 {
+        color: white !important;
+        margin: 0;
+        font-size: 2.2rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+    }
+    .main-header p {
+        color: rgba(255, 255, 255, 0.9) !important;
+        margin-top: 10px;
+        font-size: 1.1rem;
+    }
+
+    /* 카드형 컨테이너 (st.container(border=True)) 스타일 재정의 */
+    div[data-testid="stVerticalBlockBorderWrapper"] > div {
+        border: 1px solid #E2E8F0 !important;
+        background-color: #FFFFFF;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+    }
+
+    /* 텍스트 입력 필드 스타일 (Shadcn UI 느낌) */
+    .stTextInput input, .stTextArea textarea {
+        border-radius: 8px !important;
+        border: 1px solid #CBD5E1 !important;
+        background-color: #FFFFFF !important;
+        color: #1E293B !important;
+        transition: all 0.2s;
+        padding: 10px 12px;
+    }
+    .stTextInput input:focus, .stTextArea textarea:focus {
+        border-color: #3B82F6 !important;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+    }
+
+    /* 버튼 스타일 */
     div.stButton > button {
-        background-color: #F0F4FF; color: #3477FF; border: 1px solid #3477FF;
-        border-radius: 8px; font-weight: 700; transition: all 0.2s; height: 44px;
+        border-radius: 8px;
+        font-weight: 600;
+        border: 1px solid #E2E8F0;
+        background-color: white;
+        color: #475569;
+        height: 48px;
+        transition: all 0.2s ease;
     }
     div.stButton > button:hover {
-        background-color: #3477FF; color: white; border: 1px solid #3477FF;
+        border-color: #3B82F6;
+        color: #3B82F6;
+        background-color: #EFF6FF;
     }
+    
+    /* Primary 버튼 (강조) */
     div.stButton > button[kind="primary"] {
-        background-color: #3477FF; color: white; border: none;
-        box-shadow: 0 4px 12px rgba(52, 119, 255, 0.3);
+        background: linear-gradient(to bottom right, #3B82F6, #2563EB);
+        border: none;
+        color: white;
+        box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);
     }
     div.stButton > button[kind="primary"]:hover {
-        background-color: #2660D9; box-shadow: 0 2px 8px rgba(52, 119, 255, 0.2);
+        background: linear-gradient(to bottom right, #2563EB, #1D4ED8);
+        box-shadow: 0 6px 8px -1px rgba(37, 99, 235, 0.4);
+        transform: translateY(-1px);
     }
-    .stTextArea textarea, .stTextInput input {
-        border-radius: 8px; border: 1px solid #E0E0E0; background-color: #FCFCFC;
+
+    /* 탭 스타일 */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: #F1F5F9;
+        padding: 4px;
+        border-radius: 10px;
     }
-    .stTextArea textarea:focus, .stTextInput input:focus {
-        border-color: #3477FF; box-shadow: 0 0 0 2px rgba(52, 119, 255, 0.1);
-    }
-    h1, h2, h3 { font-family: 'Pretendard', sans-serif; color: #171717; font-weight: 700; }
-    p, label { color: #444444; }
-    section[data-testid="stSidebar"] { background-color: #FFFFFF; border-right: 1px solid #EAEAEA; }
-    .stTabs [data-baseweb="tab-list"] { gap: 20px; }
     .stTabs [data-baseweb="tab"] {
-        height: 50px; white-space: pre-wrap; background-color: transparent;
-        border-radius: 4px; color: #888888; font-weight: 600;
+        height: 40px;
+        border-radius: 6px;
+        background-color: transparent;
+        border: none;
+        color: #64748B;
+        font-weight: 600;
     }
-    .stTabs [aria-selected="true"] { color: #3477FF; border-bottom-color: #3477FF; }
+    .stTabs [aria-selected="true"] {
+        background-color: #FFFFFF !important;
+        color: #2563EB !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    /* 헤더 텍스트 색상 */
+    h2, h3 { color: #1E293B; font-weight: 700; }
+    p, label { color: #475569; }
+    
 </style>
 """
-st.markdown(saramin_style, unsafe_allow_html=True)
+st.markdown(modern_style, unsafe_allow_html=True)
 
 # API 키 및 DB 연결
 if "GEMINI_API_KEY" in st.secrets:
@@ -73,14 +147,12 @@ MODEL_NAME = "gemini-flash-latest"
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # ==========================================
-# 2. Helper 함수
+# 2. Helper 함수 (기존 로직 유지)
 # ==========================================
 def get_users_db():
-    # [주의] 본인의 구글 시트 탭 이름이 'Sheet1'인지 '시트1'인지 확인 후 수정하세요!
     return conn.read(worksheet="Sheet1", ttl=0)
 
 def update_user_db(df):
-    # [주의] 위와 동일하게 수정하세요!
     conn.update(worksheet="Sheet1", data=df)
     st.cache_data.clear()
 
@@ -92,18 +164,23 @@ def check_login():
     if st.session_state.logged_in:
         return True
 
-    # 로그인 화면 디자인
-    c1, c2, c3 = st.columns([1, 1.5, 1])
+    # 로그인 화면 디자인 개선
+    c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
-        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown("<br><br><br>", unsafe_allow_html=True)
         with st.container(border=True):
-            st.markdown("<h2 style='text-align: center; color: #3477FF;'>SKelectlink</h2>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align: center; color: #666; font-size: 14px;'>스마트한 회의록 작성을 위한 AI 비서</p>", unsafe_allow_html=True)
-            st.markdown("---")
+            st.markdown("""
+                <div style='text-align: center; margin-bottom: 20px;'>
+                    <h2 style='color: #2563EB; margin:0;'>SKelectlink</h2>
+                    <p style='font-size: 14px; color: #64748B;'>스마트한 회의록 작성을 위한 AI 비서</p>
+                </div>
+            """, unsafe_allow_html=True)
+            
             with st.form("login_form"):
                 username = st.text_input("아이디", placeholder="ID를 입력하세요")
                 password = st.text_input("비밀번호", type="password", placeholder="비밀번호를 입력하세요")
-                submitted = st.form_submit_button("로그인 시작", type="primary", use_container_width=True)
+                st.markdown("<br>", unsafe_allow_html=True)
+                submitted = st.form_submit_button("로그인", type="primary", use_container_width=True)
 
                 if submitted:
                     try:
@@ -121,7 +198,6 @@ def check_login():
                         else:
                             st.error("아이디 또는 비밀번호가 일치하지 않습니다.")
                     except Exception as e:
-                        # 에러 내용을 확인하려면 아래 주석을 해제하세요.
                         st.error(f"시스템 접속 오류: {e}")
     return False
 
@@ -181,8 +257,8 @@ def generate_minutes(info, script, mapping, rag_data="", custom_prompt=""):
     output_format = """
 # [OUTPUT FORMAT] (Markdown)
 # 📑 {info['title']}
-> **📅 일시:** {info['date']}   
-> **👥 참석자:** {attendees_str}   
+> **📅 일시:** {info['date']}    
+> **👥 참석자:** {attendees_str}    
 > **🏢 작성:** AI Assistant
 ---
 ### 1. 요약
@@ -311,14 +387,13 @@ with st.sidebar:
                 st.error("새 비밀번호가 일치하지 않습니다.")
             elif not new_pw:
                 st.error("비밀번호를 입력해주세요.")
-            elif new_pw[0].isdigit(): # [수정] 숫자로 시작하는지 확인
+            elif new_pw[0].isdigit():
                 st.error("⚠️ 비밀번호는 숫자로 시작할 수 없습니다. (영문자로 시작해주세요)")
             else:
                 df = get_users_db()
                 user_row = df[(df['username'] == current_user) & (df['password'].astype(str) == curr_pw)]
                 if not user_row.empty:
                     idx = user_row.index[0]
-                    # [수정] ' 제거 및 바로 저장
                     df.at[idx, 'password'] = new_pw 
                     update_user_db(df)
                     st.success("변경완료. 재로그인 필요."); st.session_state.logged_in = False; time.sleep(1); st.rerun()
@@ -335,9 +410,13 @@ with st.sidebar:
 # ---------------------------------------------------------
 # [메인] 앱 UI
 # ---------------------------------------------------------
-st.markdown("<h1 style='color:#111; margin-bottom:0;'>⚡ SKelectlink</h1>", unsafe_allow_html=True)
-st.markdown("<p style='color:#666; font-size:16px; margin-top:0;'>AI 기반 스마트 회의록 생성 서비스</p>", unsafe_allow_html=True)
-st.markdown("<br>", unsafe_allow_html=True)
+# 기존 텍스트 타이틀 대신 HTML 헤더 사용
+st.markdown("""
+<div class="main-header">
+    <h1>⚡ SKelectlink</h1>
+    <p>AI 기반 스마트 회의록 생성 서비스</p>
+</div>
+""", unsafe_allow_html=True)
 
 # STEP 1. 입력 (Card)
 with st.container(border=True):
@@ -398,7 +477,7 @@ if 'meta' in st.session_state:
                         rid = row['id']
                         c_label, c_sel, c_inp, c_del = st.columns([0.8, 1.3, 1.3, 0.4])
                         
-                        c_label.markdown(f"<div style='padding-top:10px; font-weight:600; font-size:14px;'>참석자 {i+1}</div>", unsafe_allow_html=True)
+                        c_label.markdown(f"<div style='padding-top:12px; font-weight:600; font-size:14px; color:#475569;'>참석자 {i+1}</div>", unsafe_allow_html=True)
                         
                         d_idx = len(opts)-1 if row['manual_default'] else (i if i < len(opts)-1 else 0)
                         
@@ -413,6 +492,7 @@ if 'meta' in st.session_state:
                             remove_speaker_row(rid)
                             st.rerun()
                 
+                st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
                 if st.button("➕ 화자 추가 (직접 입력)", on_click=add_speaker_row, use_container_width=True): pass
 
     # STEP 4. 생성 버튼
