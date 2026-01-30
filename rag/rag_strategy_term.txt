@@ -1,0 +1,96 @@
+# 전략기획 및 M&A(In-house Consulting) 용어 정의서
+
+## 1. M&A 및 투자 프로세스 관련 용어
+[Term] Deal Sourcing (딜 소싱)
+- 의미: 투자 대상을 발굴하는 초기 단계. 잠재적인 인수 대상 기업(Target)을 찾는 행위.
+- 문맥: "이번 분기 딜 소싱 파이프라인이 부족합니다."라고 할 때 사용.
+
+[Term] Teaser / Teaser Memo (티저)
+- 의미: 잠재적 투자자에게 보내는 간략한 투자 안내서. 기업명을 가리고 핵심 매력도만 요약한 자료.
+- 문맥: "매각 주관사로부터 티저를 수령했습니다."
+
+[Term] IM (Information Memorandum)
+- 의미: 투자 설명서. 티저 이후 비밀유지협약(NDA)을 맺은 투자자에게 제공되는 상세 기업 정보 자료.
+- 문맥: "IM 수령 후 예비 실사(Pre-DD) 진행 여부 결정하겠습니다."
+
+[Term] Due Diligence (DD / 듀 딜리전스 / 실사)
+- 의미: 인수 대상 기업의 재무, 법률, 세무, 사업 등을 상세히 조사하는 과정.
+- 종류: 
+  - CDD (Commercial DD): 시장성 및 사업성 실사
+  - FDD (Financial DD): 재무 실사
+  - LDD (Legal DD): 법률 실사
+- 문맥: "다음 주부터 CDD 킥오프(Kick-off) 들어갑니다."
+
+[Term] Valuation (밸류에이션 / 밸류)
+- 의미: 기업 가치 평가. DCF(현금흐름할인법)나 Multiples(피어 그룹 비교) 등을 사용해 적정 가격을 산출함.
+- 문맥: "셀러(Seller) 측 밸류에이션 갭이 너무 큽니다."
+
+[Term] PMI (Post-Merger Integration / 피엠아이)
+- 의미: 인수 후 통합 과정. 조직, 시스템, 문화를 통합하여 시너지를 창출하는 단계.
+- 문맥: "딜 클로징(Closing)보다 PMI 플랜 수립이 더 중요합니다."
+
+[Term] SPA (Share Purchase Agreement)
+- 의미: 주식 매매 계약. M&A의 최종 계약 형태.
+- 문맥: "SPA 마크업(Mark-up, 수정 제안) 보내주세요."
+
+## 2. 재무 및 성과 지표 (Financial Jargon)
+[Term] EBITDA (Earnings Before Interest, Taxes, Depreciation and Amortization / 에비타)
+- 의미: 이자, 세금, 감가상각비 차감 전 영업이익. 기업의 실질적인 현금 창출 능력을 보여주는 지표.
+- 문맥: "EV/EBITDA 멀티플 10배를 적용했습니다."
+
+[Term] Top-line (탑라인)
+- 의미: 매출액(Revenue). 손익계산서의 가장 윗부분.
+- 문맥: "바텀라인(이익)보다는 탑라인 성장에 집중해야 할 시기입니다."
+
+[Term] Bottom-line (바텀라인)
+- 의미: 순이익(Net Income). 손익계산서의 가장 아랫부분.
+- 문맥: "탑라인은 좋은데 바텀라인 방어가 안 되고 있습니다."
+
+[Term] CAGR (Compound Annual Growth Rate / 카그 / 연평균 성장률)
+- 의미: 여러 해 동안의 성장률을 평균으로 환산한 수치.
+- 문맥: "향후 5년 시장 CAGR은 15%로 추정됩니다."
+
+[Term] CAPEX (Capital Expenditures / 캐펙스)
+- 의미: 설비 투자 비용. 미래 이윤 창출을 위해 지출된 비용.
+- 문맥: "내년도 공장 증설로 인해 대규모 캐펙스 집행이 예상됩니다."
+
+[Term] OPEX (Operating Expenditure / 오펙스)
+- 의미: 운영 비용. 인건비, 임대료 등 유지보수에 들어가는 돈.
+- 문맥: "클라우드 전환을 통해 초기 CAPEX를 줄이고 OPEX 구조로 갑니다."
+
+## 3. 전략 프레임워크 및 컨설팅 용어
+[Term] MECE (Mutually Exclusive, Collectively Exhaustive / 미씨)
+- 의미: 상호 배타적이면서 전체를 포괄하는 것. 중복 없이, 누락 없이 분석하는 사고방식.
+- 문맥: "이 시장 분석이 MECE하게 분류되었는지 다시 확인하세요."
+
+[Term] Key Takeaways (키 테이크어웨이 / 시사점)
+- 의미: 회의나 보고서의 핵심 요약, 결론, 가져가야 할 핵심 메시지.
+- 문맥: "오늘 회의의 Key Takeaways를 3줄로 정리해 주세요."
+
+[Term] Deep-dive (딥다이브)
+- 의미: 특정 이슈를 깊이 있게 파고들어 분석하는 것.
+- 문맥: "경쟁사 원가 구조에 대해 딥다이브 해보겠습니다."
+
+[Term] Align (얼라인 / 어라인)
+- 의미: 의견을 일치시키다, 방향성을 맞추다.
+- 문맥: "재무팀과 24년도 예산안에 대해 얼라인이 필요합니다."
+
+[Term] R&R (Roles and Responsibilities / 알앤알)
+- 의미: 역할과 책임. 누가 무엇을 할지 명확히 하는 것.
+- 문맥: "TF 팀원 간의 R&R이 모호해서 업무 로드가 걸립니다."
+
+[Term] Drill-down (드릴다운)
+- 의미: 상위 데이터에서 하위 데이터로 세부적으로 쪼개어 들어가는 분석 기법.
+- 문맥: "매출 하락 원인을 지역별로 드릴다운해서 보세요."
+
+[Term] Organic / Inorganic Growth (오가닉 / 인오가닉)
+- 의미: 
+  - Organic: 자체 사업 확장을 통한 자생적 성장.
+  - Inorganic: M&A, JV 등을 통한 외부적 성장.
+- 문맥: "기존 사업의 성장 한계로 Inorganic 전략이 필수적입니다."
+
+[Term] Upside / Downside (업사이드 / 다운사이드)
+- 의미: 
+  - Upside: 긍정적 잠재력, 초과 이익 가능성.
+  - Downside: 하방 위험, 손실 가능성.
+- 문맥: "다운사이드 리스크(Risk)는 제한적이나, 업사이드 포텐셜이 큽니다."
