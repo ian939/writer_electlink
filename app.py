@@ -6,6 +6,7 @@ import datetime
 import os
 import glob
 import requests
+import time
 from google import genai
 from google.genai import types
 from streamlit_gsheets import GSheetsConnection
@@ -15,34 +16,33 @@ from streamlit_gsheets import GSheetsConnection
 # ==========================================
 st.set_page_config(page_title="SKelectlink AI 회의록", page_icon="⚡", layout="wide")
 
-# API 키 및 DB 연결
+# API 키 확인
 if "GEMINI_API_KEY" in st.secrets:
     api_key = st.secrets["GEMINI_API_KEY"]
 else:
-    st.error("Secrets에 GEMINI_API_KEY 설정이 필요합니다.")
+    st.error("🚨 Secrets에 GEMINI_API_KEY 설정이 필요합니다.")
     st.stop()
 
 client = genai.Client(api_key=api_key)
 MODEL_NAME = "gemini-flash-latest"
 
-# 구글 시트 연결 (DB)
+# 구글 시트 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # ==========================================
-# 2. DB 관련 함수 (Google Sheets)
+# 2. Helper 함수 (DB, RAG, API)
 # ==========================================
 def get_users_db():
-    """구글 시트에서 전체 유저 데이터를 가져옴 (캐시 없이 최신 데이터)"""
-    # ttl=0으로 설정해 항상 최신 데이터를 불러옴
-    return conn.read(worksheet="Sheet1", ttl=0)
+    """구글 시트 데이터 로드 (캐시 없음)"""
+    return conn.read(worksheet="시트1", ttl=0)
 
 def update_user_db(df):
-    """변경된 데이터프레임을 구글 시트에 저장"""
-    conn.update(worksheet="Sheet1", data=df)
-    st.cache_data.clear() # 캐시 초기화
+    """구글 시트 데이터 업데이트"""
+    conn.update(worksheet="시트1", data=df)
+    st.cache_data.clear()
 
 def check_login():
-    """최종 배포용 로그인 함수 (데이터 숨김)"""
+    """로그인 UI 및 로직"""
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
         st.session_state.user_info = {}
@@ -50,44 +50,41 @@ def check_login():
     if st.session_state.logged_in:
         return True
 
-    st.markdown("## 🔒 로그인 (SKelectlink)")
-    
-    with st.form("login_form"):
-        username = st.text_input("아이디")
-        password = st.text_input("비밀번호", type="password")
-        submitted = st.form_submit_button("로그인")
+    # 로그인 화면 디자인
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+        st.markdown("<h2 style='text-align: center;'>🔒 SKelectlink 회의록</h2>", unsafe_allow_html=True)
+        with st.form("login_form"):
+            username = st.text_input("아이디")
+            password = st.text_input("비밀번호", type="password")
+            submitted = st.form_submit_button("로그인", use_container_width=True)
 
-        if submitted:
-            try:
-                df = get_users_db()
-                
-                # 안전한 문자열 비교 (공백 제거 포함)
-                user_row = df[
-                    (df['username'].astype(str).str.strip() == username.strip()) & 
-                    (df['password'].astype(str).str.strip() == password.strip())
-                ]
-                
-                if not user_row.empty:
-                    st.session_state.logged_in = True
-                    st.session_state.user_info = user_row.iloc[0].to_dict()
-                    st.success(f"환영합니다, {st.session_state.user_info.get('name')}님!")
-                    st.rerun()
-                else:
-                    st.error("아이디 또는 비밀번호가 일치하지 않습니다.")
-            except Exception as e:
-                st.error("시스템 접속 오류. 관리자에게 문의하세요.")
-                # st.error(f"상세 에러: {e}") # 필요시에만 주석 해제하여 확인
-    
+            if submitted:
+                try:
+                    df = get_users_db()
+                    # 문자열 변환 및 공백 제거 후 비교
+                    user_row = df[
+                        (df['username'].astype(str).str.strip() == username.strip()) & 
+                        (df['password'].astype(str).str.strip() == password.strip())
+                    ]
+                    
+                    if not user_row.empty:
+                        st.session_state.logged_in = True
+                        st.session_state.user_info = user_row.iloc[0].to_dict()
+                        st.success(f"환영합니다, {st.session_state.user_info.get('name')}님!")
+                        time.sleep(0.5)
+                        st.rerun()
+                    else:
+                        st.error("아이디 또는 비밀번호가 일치하지 않습니다.")
+                except Exception as e:
+                    st.error("시스템 접속 오류. 관리자에게 문의하세요.")
     return False
 
-# ==========================================
-# 3. 비즈니스 로직 함수
-# ==========================================
 def load_rag_data(personal_files=None):
     rag_text = ""
     file_list = []
     
-    # 1. 공용 폴더
+    # 공용 폴더
     base_dir = os.path.dirname(os.path.abspath(__file__))
     rag_dir = os.path.join(base_dir, 'rag')
     if os.path.exists(rag_dir):
@@ -100,7 +97,7 @@ def load_rag_data(personal_files=None):
                     file_list.append(f"[공용] {os.path.basename(file_path)}")
             except: pass
     
-    # 2. 개인 업로드 (세션)
+    # 개인 업로드
     if personal_files:
         for uploaded_file in personal_files:
             try:
@@ -108,7 +105,7 @@ def load_rag_data(personal_files=None):
                 rag_text += f"\n\n--- [개인: {uploaded_file.name}] ---\n{string_data}"
                 file_list.append(f"[개인] {uploaded_file.name}")
             except: pass
-
+            
     return rag_text, file_list
 
 def send_slack_webhook(url, message):
@@ -148,7 +145,6 @@ def generate_minutes(info, script, mapping, rag_data="", custom_prompt=""):
     today = datetime.date.today().strftime("%Y-%m-%d")
     attendees_str = ", ".join(info['attendees'])
     
-    # 기본 포맷
     output_format = """
 # [OUTPUT FORMAT] (Markdown)
 # 📑 {info['title']}
@@ -171,7 +167,6 @@ def generate_minutes(info, script, mapping, rag_data="", custom_prompt=""):
 **✅ 결정:** [내용]
     """
     
-    # 사용자 커스텀 포맷이 있으면 교체
     if custom_prompt and len(custom_prompt) > 20:
         output_format = custom_prompt
 
@@ -205,304 +200,269 @@ def generate_minutes(info, script, mapping, rag_data="", custom_prompt=""):
     except Exception as e:
         return f"Error: {e}"
 
-
 # ==========================================
-# 4. 메인 앱 실행
-# ==========================================
-
-# ... (앞부분 import 및 함수 정의는 그대로 유지) ...
-
-# ==========================================
-# 4. 메인 앱 실행 및 UI
+# 3. 앱 실행 로직
 # ==========================================
 
-# 1. 로그인 체크
+# 1. 로그인 확인
 if not check_login():
     st.stop()
 
-# 2. 로그인 후 사용자 정보 로드
+# 2. 사용자 정보 로드 (세션 & DB)
 user_data = st.session_state.user_info
 current_user = user_data['username']
 user_name = user_data['name']
 
-# DB에서 최신 정보 다시 가져오기 (세션 정보 갱신용)
 try:
     df_fresh = get_users_db()
     my_row = df_fresh[df_fresh['username'] == current_user].iloc[0]
     saved_webhook = str(my_row.get('webhook', '')) if pd.notna(my_row.get('webhook')) else ""
-    # 현재 적용된 프롬프트
     active_prompt = str(my_row.get('prompt', '')) if pd.notna(my_row.get('prompt')) else ""
-    # 슬롯 저장값
     slot1_val = str(my_row.get('prompt_slot1', '')) if pd.notna(my_row.get('prompt_slot1')) else ""
     slot2_val = str(my_row.get('prompt_slot2', '')) if pd.notna(my_row.get('prompt_slot2')) else ""
 except:
-    saved_webhook = ""
-    active_prompt = ""
-    slot1_val = ""
-    slot2_val = ""
+    saved_webhook, active_prompt, slot1_val, slot2_val = "", "", "", ""
+
+# 화자 매칭용 세션 초기화
+if 'speaker_rows' not in st.session_state:
+    st.session_state.speaker_rows = [{'id': 0, 'manual_default': False}, {'id': 1, 'manual_default': False}]
+    st.session_state.next_id = 2
+
+def add_speaker_row():
+    st.session_state.speaker_rows.append({'id': st.session_state.next_id, 'manual_default': True})
+    st.session_state.next_id += 1
+
+def remove_speaker_row(row_id):
+    st.session_state.speaker_rows = [r for r in st.session_state.speaker_rows if r['id'] != row_id]
 
 # ---------------------------------------------------------
-# [사이드바] 마이페이지 (개선됨)
+# [사이드바] 마이페이지
 # ---------------------------------------------------------
 with st.sidebar:
     st.title(f"👤 {user_name}님")
     
-    # 탭으로 기능 분리 (설정 / 비밀번호)
     tab_setting, tab_pw = st.tabs(["⚙️ 설정", "🔒 비밀번호"])
     
-    # ----------------------------------
-    # TAB 1: 개인 설정 (프롬프트 & 웹훅)
-    # ----------------------------------
+    # [설정 탭]
     with tab_setting:
-        st.caption("설정을 변경하고 하단의 [적용] 버튼을 누르세요.")
+        st.caption("개인 설정을 관리합니다.")
         
-        # 1. 슬랙 웹훅
-        st.markdown("#### 💬 Slack Webhook")
-        new_webhook = st.text_input("URL 입력", value=saved_webhook, type="password")
-        
-        st.divider()
-        
-        # 2. 프롬프트 관리 (슬롯 기능 추가)
-        st.markdown("#### 📝 프롬프트 관리")
-        
-        # 에디터 상태 관리
-        if 'editor_prompt' not in st.session_state:
-            st.session_state.editor_prompt = active_prompt
+        with st.expander("💬 Slack Webhook 설정"):
+            new_webhook = st.text_input("Webhook URL", value=saved_webhook, type="password", help="슬랙 채널의 수신용 웹훅 주소")
 
-        # [버튼 액션] 슬롯 불러오기 / 초기화
-        col_load1, col_load2, col_reset = st.columns(3)
-        with col_load1:
-            if st.button("📂 불러오기 1"):
+        with st.expander("📝 프롬프트 관리 (커스텀)", expanded=True):
+            if 'editor_prompt' not in st.session_state:
+                st.session_state.editor_prompt = active_prompt
+
+            # 슬롯 버튼 (가로 배치)
+            c1, c2, c3 = st.columns(3)
+            if c1.button("📂 불러1"):
                 st.session_state.editor_prompt = slot1_val
                 st.rerun()
-        with col_load2:
-            if st.button("📂 불러오기 2"):
+            if c2.button("📂 불러2"):
                 st.session_state.editor_prompt = slot2_val
                 st.rerun()
-        with col_reset:
-            if st.button("🔄 초기화"):
-                # 기본 제공 프롬프트로 리셋
+            if c3.button("🔄 초기화"):
                 st.session_state.editor_prompt = "" 
                 st.rerun()
 
-        # 프롬프트 에디터
-        new_prompt = st.text_area(
-            "프롬프트 편집기", 
-            value=st.session_state.editor_prompt, 
-            height=200,
-            placeholder="비워두면 시스템 기본 프롬프트가 사용됩니다."
-        )
-        
-        # [버튼 액션] 슬롯에 저장하기
-        col_save1, col_save2 = st.columns(2)
-        with col_save1:
-            if st.button("💾 슬롯 1에 보관"):
+            new_prompt = st.text_area(
+                "프롬프트 내용", 
+                value=st.session_state.editor_prompt, 
+                height=150,
+                placeholder="시스템 기본 프롬프트를 덮어씌웁니다."
+            )
+            
+            c1, c2 = st.columns(2)
+            if c1.button("💾 슬롯1 저장"):
                 df = get_users_db()
                 idx = df[df['username'] == current_user].index
                 if not idx.empty:
                     df.at[idx[0], 'prompt_slot1'] = new_prompt
                     update_user_db(df)
-                    st.toast("슬롯 1에 저장됨!")
-                    time.sleep(1) # 업데이트 대기
-                    st.rerun()
-        with col_save2:
-            if st.button("💾 슬롯 2에 보관"):
+                    st.toast("슬롯 1에 저장됨")
+                    time.sleep(1); st.rerun()
+                    
+            if c2.button("💾 슬롯2 저장"):
                 df = get_users_db()
                 idx = df[df['username'] == current_user].index
                 if not idx.empty:
                     df.at[idx[0], 'prompt_slot2'] = new_prompt
                     update_user_db(df)
-                    st.toast("슬롯 2에 저장됨!")
-                    time.sleep(1)
-                    st.rerun()
+                    st.toast("슬롯 2에 저장됨")
+                    time.sleep(1); st.rerun()
 
         st.markdown("---")
-        # [최종 저장] 현재 설정을 적용 (Active Prompt & Webhook)
-        if st.button("✅ 설정 적용 (Main Save)", type="primary", use_container_width=True):
+        if st.button("✅ 전체 설정 적용 (저장)", type="primary", use_container_width=True):
             with st.spinner("저장 중..."):
                 df = get_users_db()
                 idx = df[df['username'] == current_user].index
                 if not idx.empty:
                     df.at[idx[0], 'webhook'] = new_webhook
-                    df.at[idx[0], 'prompt'] = new_prompt # 현재 생성에 쓸 프롬프트
+                    df.at[idx[0], 'prompt'] = new_prompt
                     update_user_db(df)
-                    
-                    # 세션 동기화
                     st.session_state.editor_prompt = new_prompt
                     st.session_state.user_info['webhook'] = new_webhook
                     st.session_state.user_info['prompt'] = new_prompt
-                    st.success("설정이 적용되었습니다!")
-    
-    # ----------------------------------
-    # TAB 2: 비밀번호 변경
-    # ----------------------------------
+                    st.success("적용 완료!")
+
+    # [비밀번호 탭]
     with tab_pw:
-        st.markdown("#### 🔐 비밀번호 변경")
         curr_pw = st.text_input("현재 비밀번호", type="password")
         new_pw = st.text_input("새 비밀번호", type="password")
-        confirm_pw = st.text_input("새 비밀번호 확인", type="password")
+        confirm_pw = st.text_input("확인", type="password")
         
-        if st.button("비밀번호 변경"):
-            if new_pw != confirm_pw:
-                st.error("새 비밀번호가 일치하지 않습니다.")
-            elif not new_pw:
-                st.error("비밀번호를 입력해주세요.")
+        if st.button("변경하기"):
+            if new_pw != confirm_pw: st.error("새 비밀번호 불일치")
+            elif not new_pw: st.error("비밀번호 입력 필요")
             else:
                 df = get_users_db()
-                # 현재 비번 확인 (문자열 변환 필수)
                 user_row = df[(df['username'] == current_user) & (df['password'].astype(str) == curr_pw)]
-                
                 if not user_row.empty:
                     idx = user_row.index[0]
-                    # 주의: 구글시트가 숫자로 인식하지 않도록 앞에 ' 붙여서 저장하거나 문자열로 처리
                     df.at[idx, 'password'] = f"'{new_pw}" 
                     update_user_db(df)
-                    st.success("비밀번호가 변경되었습니다! 다시 로그인해주세요.")
+                    st.success("변경 완료. 다시 로그인해주세요.")
                     st.session_state.logged_in = False
-                    time.sleep(2)
-                    st.rerun()
+                    time.sleep(1.5); st.rerun()
                 else:
-                    st.error("현재 비밀번호가 틀렸습니다.")
+                    st.error("현재 비밀번호 틀림")
 
     st.divider()
     
-    # 개인 RAG 업로드 (세션용)
-    st.markdown("📂 **참고 자료 (이번 접속용)**")
-    personal_files = st.file_uploader("txt 파일 추가", type=["txt"], accept_multiple_files=True)
+    st.markdown("📂 **참고 자료 (휘발성)**")
+    personal_files = st.file_uploader("txt 파일", type=["txt"], accept_multiple_files=True, label_visibility="collapsed")
     rag_text, rag_file_names = load_rag_data(personal_files)
-    
     if rag_file_names:
-        st.caption(f"참고 중: {len(rag_file_names)}개")
+        st.caption(f"📚 {len(rag_file_names)}개 파일 참조 중")
 
+    st.markdown("")
     if st.button("로그아웃"):
         st.session_state.logged_in = False
         st.rerun()
 
 # ---------------------------------------------------------
-# [메인] 앱 로직 (이하 동일)
+# [메인] 앱 UI
 # ---------------------------------------------------------
 st.title("⚡ SKelectlink 회의록 생성기")
 
-# ... (이하 STEP 1 ~ STEP 5 코드는 기존 app.py 내용 그대로 유지) ...
-# (주의: STEP 1~5 코드가 사라지지 않도록 잘 연결해주세요)
-# 아래에 기존 코드의 "화자 매칭 상태 관리" 부분부터 끝까지 붙어있어야 합니다.
-
-# 화자 매칭 상태 관리 (예시 - 기존 코드 유지)
-if 'speaker_rows' not in st.session_state:
-    st.session_state.speaker_rows = [{'id': 0, 'manual_default': False}, {'id': 1, 'manual_default': False}]
-    st.session_state.next_id = 2
-
-def add_speaker_row():
-    st.session_state.speaker_rows.append({'id': st.session_state.next_id, 'manual_default': True})
-    st.session_state.next_id += 1
-
-def remove_speaker_row(row_id):
-    st.session_state.speaker_rows = [r for r in st.session_state.speaker_rows if r['id'] != row_id]
-
-# ... (STEP 1 ~ STEP 5 기존 코드 계속) ...
-# STEP 1: 스크립트 입력
-st.subheader("1. 스크립트 입력")
-# ...
-
-# [메인]
-st.title("⚡ SKelectlink 회의록 생성기")
-
-# 화자 매칭 상태 관리
-if 'speaker_rows' not in st.session_state:
-    st.session_state.speaker_rows = [{'id': 0, 'manual_default': False}, {'id': 1, 'manual_default': False}]
-    st.session_state.next_id = 2
-
-def add_speaker_row():
-    st.session_state.speaker_rows.append({'id': st.session_state.next_id, 'manual_default': True})
-    st.session_state.next_id += 1
-
-def remove_speaker_row(row_id):
-    st.session_state.speaker_rows = [r for r in st.session_state.speaker_rows if r['id'] != row_id]
-
-# ----------------------------
 # STEP 1. 입력
-# ----------------------------
-st.subheader("1. 스크립트 입력")
-script_text = st.text_area("회의 녹취", height=150, key="input_script")
-
-if st.button("🔍 1차 분석", type="primary"):
-    if script_text:
-        with st.spinner("분석 중..."):
-            meta = analyze_script_metadata(script_text)
-            st.session_state['meta'] = meta
-            cnt = len(meta.get('attendees', []))
-            cnt = cnt if cnt > 0 else max(detect_speaker_count(script_text), 2)
-            st.session_state.speaker_rows = [{'id': i, 'manual_default': False} for i in range(cnt)]
-            st.session_state.next_id = cnt
-            st.success("완료")
-
-# ----------------------------
-# STEP 2. 확인
-# ----------------------------
-if 'meta' in st.session_state:
-    st.markdown("---")
-    meta = st.session_state['meta']
-    with st.container(border=True):
-        c1, c2 = st.columns([2, 1])
-        t = c1.text_input("주제", value=meta.get('title',''))
-        d = c2.text_input("날짜", value=meta.get('date', str(datetime.date.today())))
-        
-        att_list = meta.get('attendees', [])
-        if not att_list: att_list = [f"참석자 {i+1}" for i in range(len(st.session_state.speaker_rows))]
-        att_str = st.text_input("참석자", value=", ".join(att_list))
-        
-        st.session_state['final_info'] = {"title": t, "date": d, "attendees": [x.strip() for x in att_str.split(',')]}
-
-# ----------------------------
-# STEP 3. 매칭
-# ----------------------------
-if 'final_info' in st.session_state:
-    st.markdown("---")
-    opts = st.session_state['final_info']['attendees'] + ["직접 입력"]
-    mapping_list = []
+with st.container(border=True):
+    st.subheader("1. 스크립트 입력")
+    script_text = st.text_area("회의 녹취록을 붙여넣으세요.", height=200, key="input_script")
     
-    with st.container(height=300, border=True):
-        for i, row in enumerate(st.session_state.speaker_rows):
-            rid = row['id']
-            cols = st.columns([1, 2, 2, 0.3])
-            cols[0].markdown(f"**🗣️ 참석자 {i+1}**")
-            d_idx = len(opts)-1 if row['manual_default'] else (i if i < len(opts)-1 else 0)
-            sel = cols[1].selectbox("선택", opts, index=d_idx, label_visibility="collapsed", key=f"s_{rid}")
-            real = sel
-            if sel == "직접 입력": real = cols[2].text_input("입력", label_visibility="collapsed", key=f"t_{rid}")
-            if real: mapping_list.append(f"- 참석자 {i+1} → {real}")
-            if cols[3].button("❌", key=f"d_{rid}"):
-                remove_speaker_row(rid)
-                st.rerun()
+    if st.button("🔍 1차 분석 실행", type="primary", use_container_width=True):
+        if not script_text.strip():
+            st.warning("내용을 입력해주세요.")
+        else:
+            with st.spinner("분석 중..."):
+                meta = analyze_script_metadata(script_text)
+                st.session_state['meta'] = meta
                 
-    if st.button("➕ 화자 추가", on_click=add_speaker_row): pass
+                # 화자 수 자동 계산 및 초기화
+                extracted = meta.get('attendees', [])
+                cnt = len(extracted) if len(extracted) > 0 else max(detect_speaker_count(script_text), 2)
+                
+                # 기존 매칭 정보 초기화
+                st.session_state.speaker_rows = [{'id': i, 'manual_default': False} for i in range(cnt)]
+                st.session_state.next_id = cnt
+                st.success("분석 완료! 아래 정보를 확인해주세요.")
 
-    # ----------------------------
-    # STEP 4. 생성
-    # ----------------------------
-    st.markdown("---")
-    if st.button("✨ 회의록 생성", type="primary", use_container_width=True):
-        with st.spinner("생성 중..."):
+# STEP 2 & 3. 정보 확인 및 매칭
+if 'meta' in st.session_state:
+    st.markdown("⬇️")
+    
+    # 2단 컬럼 레이아웃
+    col_info, col_mapping = st.columns([1, 1.2])
+    
+    # [좌측] 기본 정보 확인
+    with col_info:
+        with st.container(border=True):
+            st.subheader("2. 기본 정보")
+            meta = st.session_state['meta']
+            
+            t = st.text_input("주제", value=meta.get('title',''))
+            d = st.text_input("날짜", value=meta.get('date', str(datetime.date.today())))
+            
+            att_list = meta.get('attendees', [])
+            if not att_list: 
+                att_list = [f"참석자 {i+1}" for i in range(len(st.session_state.speaker_rows))]
+            
+            att_str = st.text_input("참석자 명단", value=", ".join(att_list))
+            final_att = [x.strip() for x in att_str.split(',') if x.strip()]
+            
+            st.session_state['final_info'] = {"title": t, "date": d, "attendees": final_att}
+
+    # [우측] 화자 매칭
+    with col_mapping:
+        with st.container(border=True):
+            st.subheader("3. 화자 매칭")
+            
+            if 'final_info' in st.session_state:
+                opts = st.session_state['final_info']['attendees'] + ["직접 입력"]
+                mapping_list = []
+                
+                # 스크롤 가능한 영역 (높이 고정)
+                with st.container(height=220):
+                    for i, row in enumerate(st.session_state.speaker_rows):
+                        rid = row['id']
+                        c_label, c_sel, c_inp, c_del = st.columns([0.8, 1.2, 1.2, 0.4])
+                        
+                        c_label.markdown(f"**참석자 {i+1}**")
+                        
+                        # 디폴트 인덱스
+                        d_idx = len(opts)-1 if row['manual_default'] else (i if i < len(opts)-1 else 0)
+                        
+                        sel = c_sel.selectbox("선택", opts, index=d_idx, label_visibility="collapsed", key=f"s_{rid}")
+                        real = sel
+                        if sel == "직접 입력":
+                            real = c_inp.text_input("이름", label_visibility="collapsed", key=f"t_{rid}")
+                        
+                        if real: 
+                            mapping_list.append(f"- 참석자 {i+1} → {real}")
+                        
+                        if c_del.button("❌", key=f"d_{rid}"):
+                            remove_speaker_row(rid)
+                            st.rerun()
+                
+                if st.button("➕ 화자 추가", on_click=add_speaker_row, use_container_width=True): pass
+
+    # STEP 4. 생성 버튼
+    st.markdown("⬇️")
+    if st.button("✨ 회의록 생성 (Start)", type="primary", use_container_width=True):
+        with st.spinner("최종 회의록 작성 중..."):
             res = generate_minutes(
                 st.session_state['final_info'], script_text, "\n".join(mapping_list), 
-                rag_text, saved_prompt # 저장된 커스텀 프롬프트 사용
+                rag_text, saved_prompt
             )
+            
             if "# [SLACK MESSAGE]" in res: d, s = res.split("# [SLACK MESSAGE]")
-            else: d, s = res, "파싱 실패"
+            else: d, s = res, "파싱 실패 (또는 슬랙 메시지 없음)"
+            
             st.session_state['res_doc'] = d.strip()
             st.session_state['res_slack'] = s.strip()
 
-# ----------------------------
-# STEP 5. 결과
-# ----------------------------
+# STEP 5. 결과 확인
 if 'res_doc' in st.session_state:
-    st.markdown("---")
-    t1, t2 = st.tabs(["📄 문서", "💬 슬랙"])
-    with t1: st.text_area("결과", value=st.session_state['res_doc'], height=500); st.markdown(st.session_state['res_doc'])
+    st.divider()
+    st.subheader("📝 생성 결과")
+    
+    t1, t2 = st.tabs(["📄 회의록 문서", "💬 슬랙 메시지"])
+    
+    with t1:
+        c_copy, c_view = st.columns(2)
+        with c_copy:
+            st.text_area("Markdown 복사", value=st.session_state['res_doc'], height=600)
+        with c_view:
+            st.markdown(st.session_state['res_doc'])
+            
     with t2:
-        st.text_area("메시지", value=st.session_state['res_slack'], height=200)
+        st.text_area("슬랙용 텍스트", value=st.session_state['res_slack'], height=200)
         if saved_webhook:
-            if st.button("🚀 저장된 Webhook으로 전송"):
-                if send_slack_webhook(saved_webhook, st.session_state['res_slack']): st.success("전송됨")
-                else: st.error("실패")
-        else: st.info("사이드바 설정에서 Webhook URL을 저장하면 바로 전송 가능합니다.")
+            if st.button("🚀 저장된 Webhook으로 전송", type="primary"):
+                if send_slack_webhook(saved_webhook, st.session_state['res_slack']):
+                    st.success("전송되었습니다!")
+                else:
+                    st.error("전송 실패")
+        else:
+            st.info("👈 사이드바 설정에서 Webhook URL을 저장하면 바로 전송할 수 있습니다.")
