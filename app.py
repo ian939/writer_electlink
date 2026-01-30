@@ -42,7 +42,7 @@ def update_user_db(df):
     st.cache_data.clear() # 캐시 초기화
 
 def check_login():
-    """로그인 처리 로직"""
+    """디버깅용 로그인 함수"""
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
         st.session_state.user_info = {}
@@ -50,7 +50,7 @@ def check_login():
     if st.session_state.logged_in:
         return True
 
-    st.markdown("## 🔒 로그인 (SKelectlink)")
+    st.markdown("## 🔒 로그인 (디버깅 모드)")
     
     with st.form("login_form"):
         username = st.text_input("아이디")
@@ -59,20 +59,30 @@ def check_login():
 
         if submitted:
             try:
+                # 1. 시트 데이터 가져오기
                 df = get_users_db()
-                # 아이디/비번 확인
-                user_row = df[(df['username'] == username) & (df['password'].astype(str) == password)]
+                
+                # [디버깅] 화면에 데이터 출력해보기 (나중에 지우세요!)
+                st.warning("📊 로봇이 읽어온 데이터:")
+                st.dataframe(df) 
+                
+                # 2. 아이디/비번 비교 (문자열로 변환해서 비교)
+                # 데이터 앞뒤 공백 제거(strip) 추가
+                user_row = df[
+                    (df['username'].astype(str).str.strip() == username.strip()) & 
+                    (df['password'].astype(str).str.strip() == password.strip())
+                ]
                 
                 if not user_row.empty:
                     st.session_state.logged_in = True
-                    # 유저 정보를 세션에 저장 (Series -> Dict)
                     st.session_state.user_info = user_row.iloc[0].to_dict()
                     st.success("로그인 성공!")
                     st.rerun()
                 else:
-                    st.error("아이디 또는 비밀번호가 잘못되었습니다.")
+                    st.error(f"실패: '{username}' 아이디가 없거나 비번이 틀림.")
             except Exception as e:
-                st.error(f"DB 연결 오류: {e}")
+                st.error(f"🚨 DB 연결 에러: {e}")
+                st.write("힌트: secrets.toml 설정이나 시트 공유 권한을 확인하세요.")
     
     return False
 
