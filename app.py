@@ -128,10 +128,10 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # 2. Helper 함수 (로직은 그대로 유지)
 # ==========================================
 def get_users_db():
-    return conn.read(worksheet="시트1", ttl=0)
+    return conn.read(worksheet="Sheet1", ttl=0)  # 영어로 변경
 
 def update_user_db(df):
-    conn.update(worksheet="시트1", data=df)
+    conn.update(worksheet="Sheet1", data=df)
     st.cache_data.clear()
 
 def check_login():
