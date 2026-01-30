@@ -1,5 +1,5 @@
 streamlit
 google-genai
-streamlit-google-sheets
+st-gsheets-connection
 pandas
 requests
