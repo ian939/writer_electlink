@@ -23,8 +23,6 @@ if not api_key:
     st.stop()
 
 client = genai.Client(api_key=api_key)
-
-# 모델명 설정
 MODEL_NAME = "gemini-flash-latest"
 
 # ==========================================
@@ -94,7 +92,6 @@ def generate_minutes(info, script, mapping, rag_data=""):
     today = datetime.date.today().strftime("%Y-%m-%d")
     attendees_str = ", ".join(info['attendees'])
     
-    # [수정 Point 1] Action Item 팀명 추측 금지 프롬프트 추가
     prompt = f"""
 # [ROLE]
 당신은 SKelectlink의 전문 회의록 작성 비서입니다. 
@@ -171,9 +168,9 @@ def generate_minutes(info, script, mapping, rag_data=""):
 # 3. Streamlit UI 구성
 # ==========================================
 st.title("⚡ SKelectlink 회의록 생성기")
-st.caption(f"Model: {MODEL_NAME} | RAG Enabled, 슬자생 멤버들을 위한 MVP버전 (로그인+DB를 통한 rag추가 및 슬랙 웹훅 설정 추가 예정)")
+st.caption(f"Model: {MODEL_NAME} | RAG Enabled")
 
-# 사이드바: RAG 상태 표시
+# 사이드바
 rag_text, rag_files = load_rag_data()
 with st.sidebar:
     st.subheader("📚 RAG 지식 베이스")
@@ -185,8 +182,23 @@ with st.sidebar:
     else:
         st.info("repository의 'rag/' 폴더에 .txt 파일이 없습니다.")
 
-if 'num_speakers' not in st.session_state:
-    st.session_state.num_speakers = 2
+# ------------------------------------------
+# State Management (화자 리스트 관리)
+# ------------------------------------------
+# speaker_rows: [{'id': 0, 'manual_default': False}, {'id': 1, ...}]
+if 'speaker_rows' not in st.session_state:
+    st.session_state.speaker_rows = [{'id': 0, 'manual_default': False}, {'id': 1, 'manual_default': False}]
+    st.session_state.next_id = 2 # 다음 ID 발급용
+
+def add_speaker_row():
+    """새 화자 행 추가 (직접 입력 디폴트)"""
+    new_id = st.session_state.next_id
+    st.session_state.speaker_rows.append({'id': new_id, 'manual_default': True})
+    st.session_state.next_id += 1
+
+def remove_speaker_row(row_id):
+    """특정 ID의 화자 행 삭제"""
+    st.session_state.speaker_rows = [r for r in st.session_state.speaker_rows if r['id'] != row_id]
 
 # ------------------------------------------
 # STEP 1. 스크립트 입력
@@ -209,15 +221,15 @@ if st.button("🔍 1차 정보 분석 (클릭)", type="primary"):
             meta = analyze_script_metadata(script_text)
             st.session_state['meta'] = meta
             
-            # 2. 화자 수 보정
+            # 2. 화자 수에 맞춰 UI 행 초기화
             extracted_attendees = meta.get('attendees', [])
             count_from_ai = len(extracted_attendees)
             
-            if count_from_ai == 0:
-                detected_count = detect_speaker_count(script_text)
-                st.session_state.num_speakers = max(detected_count, 2)
-            else:
-                st.session_state.num_speakers = count_from_ai
+            target_count = count_from_ai if count_from_ai > 0 else max(detect_speaker_count(script_text), 2)
+            
+            # 리스트 재설정 (기존 매칭 초기화)
+            st.session_state.speaker_rows = [{'id': i, 'manual_default': False} for i in range(target_count)]
+            st.session_state.next_id = target_count
             
             st.success("분석 완료! 아래 정보를 확인해주세요.")
 
@@ -235,10 +247,10 @@ if 'meta' in st.session_state:
         input_title = c1.text_input("회의 주제", value=meta.get('title', ''))
         input_date = c2.text_input("회의 날짜", value=meta.get('date', str(datetime.date.today())))
         
-        # 참석자 명단 (AI가 찾은 내용 표시)
         current_attendees = meta.get('attendees', [])
+        # 리스트 비어있으면 자동 생성
         if not current_attendees:
-            current_attendees = [f"참석자 {i+1}" for i in range(st.session_state.num_speakers)]
+            current_attendees = [f"참석자 {i+1}" for i in range(len(st.session_state.speaker_rows))]
 
         input_attendees_str = st.text_input("참석자 명단 (자동 추출됨, 수정 가능)", value=", ".join(current_attendees))
         
@@ -262,42 +274,49 @@ if 'final_info' in st.session_state:
     mapping_list = []
 
     # 스크롤 가능한 컨테이너
-    with st.container(height=300, border=True):
-        for i in range(st.session_state.num_speakers):
-            cols = st.columns([1, 2, 2])
-            cols[0].markdown(f"**🗣️ 참석자 {i+1}**")
+    with st.container(height=350, border=True):
+        # session_state에 저장된 rows를 순회하며 렌더링
+        for idx, row in enumerate(st.session_state.speaker_rows):
+            row_id = row['id']
+            # 컬럼 비율 조정 (라벨, 셀렉트, 입력, 삭제버튼)
+            cols = st.columns([1, 2, 2, 0.3])
             
-            # 기본 선택값 로직
-            default_idx = i if i < len(attendee_options) - 1 else 0
+            # 라벨 (인덱스 기반 표시)
+            cols[0].markdown(f"**🗣️ 참석자 {idx+1}**")
             
+            # 디폴트 인덱스 계산
+            # 추가된 행(manual_default=True)이면 '직접 입력'(마지막) 선택
+            if row['manual_default']:
+                default_idx = len(attendee_options) - 1
+            else:
+                default_idx = idx if idx < len(attendee_options) - 1 else 0
+            
+            # Selectbox (고유 key 사용)
             selected_name = cols[1].selectbox(
-                f"대상 선택 ({i})", 
+                f"대상 선택", 
                 attendee_options, 
                 index=default_idx, 
                 label_visibility="collapsed", 
-                key=f"speaker_sel_{i}"
+                key=f"sel_{row_id}"
             )
             
             real_name = selected_name
+            # 직접 입력 처리
             if selected_name == "직접 입력":
-                real_name = cols[2].text_input(f"이름 입력 ({i})", label_visibility="collapsed", key=f"speaker_txt_{i}")
+                real_name = cols[2].text_input(f"이름 입력", label_visibility="collapsed", key=f"txt_{row_id}")
             
+            # 매칭 리스트에 추가
             if real_name:
-                mapping_list.append(f"- 참석자 {i+1} → {real_name}")
-
-    # [수정 Point 2] 화자 추가 및 삭제 기능
-    col_add, col_del = st.columns(2)
-    with col_add:
-        if st.button("➕ 화자 추가", use_container_width=True):
-            st.session_state.num_speakers += 1
-            st.rerun()
-    with col_del:
-        if st.button("➖ 화자 삭제 (맨 아래 칸)", use_container_width=True):
-            if st.session_state.num_speakers > 1:
-                st.session_state.num_speakers -= 1
+                mapping_list.append(f"- 참석자 {idx+1} → {real_name}")
+            
+            # 삭제 버튼 (고유 key 및 콜백 사용)
+            if cols[3].button("❌", key=f"del_{row_id}"):
+                remove_speaker_row(row_id)
                 st.rerun()
-            else:
-                st.toast("최소 1명은 있어야 합니다.")
+
+    # 화자 추가 버튼
+    if st.button("➕ 화자 추가 (직접 입력)", on_click=add_speaker_row):
+        pass # 콜백에서 처리됨
 
     # ------------------------------------------
     # STEP 4. 회의록 생성
